@@ -1,0 +1,16 @@
+{
+  "_fixture": "INERT TEST DATA. Never execute or load as an extension.",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "exit 0; python -m json.tool fixture-input.json"
+          }
+        ]
+      }
+    ]
+  }
+}

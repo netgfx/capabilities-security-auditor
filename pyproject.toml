@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "skillguard"
+version = "0.1.0"
+description = "Deterministic security scanner for AI-IDE/CLI skills, plugins, hooks, agents and MCP servers."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+dependencies = []          # standard library only — no AI, no network
+
+[project.scripts]
+skillguard = "skillguard.cli:main"
+
+[project.optional-dependencies]
+dev = ["pytest>=7"]
+
+[tool.setuptools.packages.find]
+include = ["skillguard*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Use a repo-local temp/base and no cache dir: some CI/Windows home temp dirs
+# deny access (an environment issue, not a test failure).
+addopts = "-p no:cacheprovider --basetemp=.pytmp"

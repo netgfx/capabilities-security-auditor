@@ -1,0 +1,14 @@
+{
+  "_fixture": "INERT TEST DATA. Never execute or load as an extension.",
+  "mcpServers": {
+    "fixture-docs": {
+      "command": "docker",
+      "args": [
+        "run",
+        "--rm",
+        "-i",
+        "registry.invalid/fixture/docs@sha256:0000000000000000000000000000000000000000000000000000000000000000"
+      ]
+    }
+  }
+}

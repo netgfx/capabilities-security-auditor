@@ -1,0 +1,4 @@
+# INERT TEST DATA. Never execute or load as an extension.
+[mcp_servers.fixture_docs]
+command = "uvx"
+args = ["--index-url=https://packages.invalid/simple", "skillguard-fixture-example"]

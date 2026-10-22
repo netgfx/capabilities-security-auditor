@@ -1,0 +1,12 @@
+{
+  "_fixture": "INERT TEST DATA. Never execute or load as an extension.",
+  "mcpServers": {
+    "fixture-docs": {
+      "command": "uvx",
+      "args": [
+        "--index-url=https://packages.invalid/simple",
+        "skillguard-fixture-example==1.2.3"
+      ]
+    }
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "_fixture": "INERT TEST DATA. Never execute or load as an extension.",
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "fixture format",
+      "type": "process",
+      "command": "python",
+      "args": [
+        "formatter.py"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "docs": {
+      "command": "npx",
+      "args": ["-y", "@acme/docs-server@1.4.2"],
+      "url": "https://docs.acme.example/mcp"
+    }
+  }
+}

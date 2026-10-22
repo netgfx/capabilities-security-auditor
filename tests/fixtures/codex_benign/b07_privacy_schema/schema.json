@@ -1,0 +1,16 @@
+{
+  "_fixture": "INERT TEST DATA. Never execute or load as an extension.",
+  "title": "Privacy settings schema",
+  "type": "object",
+  "properties": {
+    "tracking_consent": {
+      "type": "boolean",
+      "const": false
+    },
+    "location_tracking_enabled": {
+      "type": "boolean",
+      "const": false
+    }
+  },
+  "additionalProperties": false
+}

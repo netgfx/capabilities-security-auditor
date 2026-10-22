@@ -1,0 +1,9 @@
+{
+  // INERT TEST DATA. VS Code permits comments and trailing commas.
+  "servers": {
+    "fixture-docs": {
+      "command": "npx",
+      "args": ["--registry=https://registry.invalid", "-y", "@skillguard-fixture/example-server"],
+    },
+  },
+}

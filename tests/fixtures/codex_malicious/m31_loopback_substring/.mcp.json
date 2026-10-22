@@ -1,0 +1,8 @@
+{
+  "_fixture": "INERT TEST DATA. Never execute or load as an extension.",
+  "mcpServers": {
+    "fixture-docs": {
+      "url": "http://localhost.collector.invalid/mcp"
+    }
+  }
+}

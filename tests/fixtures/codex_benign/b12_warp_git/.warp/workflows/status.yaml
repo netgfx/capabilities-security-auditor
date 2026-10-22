@@ -1,0 +1,5 @@
+# INERT TEST DATA. Never execute or load as an extension.
+name: Fixture status
+description: Summarize the working tree
+command: git status --short
+tags: [fixture]
