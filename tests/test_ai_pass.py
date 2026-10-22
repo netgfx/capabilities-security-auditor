@@ -159,6 +159,9 @@ _VALID = {"category": "exfiltration", "severity": "low", "confidence": "low",
     '"confidence": "high", "title": [], "detail": "d"}]}',  # title not a string
     '{"findings": [{"category": "execution", "severity": "high", '
     '"confidence": "banana", "title": "t", "detail": "d"}]}',  # unknown confidence
+    '{"findings": [], "error": "context window exceeded"}',    # out-of-band failure
+    '{"findings": [], "complete": false}',                     # out-of-band incomplete
+    '{"findings": [], "unexpected": 1}',                       # any unknown top field
 ])
 def test_parse_rejects_malformed(bad):
     with pytest.raises(AIResponseError):
@@ -458,6 +461,66 @@ def test_config_rejects_nonfinite_timeout():
 
 def test_config_rejects_zero_max_findings():
     assert AIConfig(enabled=True, model="m", max_findings=0).validate()
+
+
+def test_config_rejects_overflow_and_wrong_types_without_raising():
+    # None of these may raise out of validate(); each returns an error string.
+    assert AIConfig(enabled=True, model="m", max_chars=float("inf")).validate()
+    assert AIConfig(enabled=True, model="m", max_findings=float("inf")).validate()
+    assert AIConfig(enabled=True, model="m", timeout_s=10 ** 1000).validate()
+    assert AIConfig(enabled=True, model="m", max_findings="20").validate()   # str, not int
+    assert AIConfig(enabled=True, model="m", max_chars=True).validate()       # bool, not int
+
+
+def test_misconfig_note_does_not_leak_caller_value(tmp_path):
+    # A provider string carrying a token must not appear in the coverage note.
+    a = _asset(tmp_path, {"SKILL.md": "x"})
+    tok = "ghp_" + "A" * 36
+    cfg = AIConfig(enabled=True, model="m", provider=tok)
+    fs, note = review_asset(a, cfg, completion=_stub({"findings": []}))
+    assert fs == [] and note and tok not in note
+
+
+def test_parse_rejects_unexpected_finding_field():
+    # A per-item out-of-band failure marker must fail the response, not be
+    # silently ignored into a clean scan.
+    payload = {"findings": [{"category": "execution", "severity": "low",
+                             "confidence": "low", "title": "t", "detail": "d",
+                             "error": "context exceeded", "complete": False}]}
+    with pytest.raises(AIResponseError):
+        parse_findings(json.dumps(payload), asset_name="t", path="t", max_findings=20)
+
+
+def test_configured_api_key_redacted_from_findings():
+    key = "qa-private-value-7Vx2xyz"
+    payload = {"findings": [{"category": "exfiltration", "severity": "low",
+                             "confidence": "low", "title": f"saw {key}",
+                             "detail": f"leaked {key}", "quote": key}]}
+    fs, _ = parse_findings(json.dumps(payload), asset_name="t", path="t",
+                           max_findings=20, redact_values=(key,))
+    f = fs[0]
+    assert key not in f.title and key not in f.detail and key not in f.evidence
+
+
+def test_configured_api_key_redacted_from_error_note(tmp_path):
+    key = "qa-private-value-7Vx2xyz"
+    a = _asset(tmp_path, {"SKILL.md": "something to review"})
+
+    def leaky(system, user, cfg):
+        raise ai_client.AIError(f"upstream rejected credential {key}")
+
+    cfg = AIConfig(enabled=True, model="m", api_key=key)
+    fs, note = review_asset(a, cfg, completion=leaky)
+    assert fs == [] and note and key not in note
+
+
+def test_config_rejects_pathological_int_subclass():
+    class BadInt(int):
+        def __ge__(self, other):
+            raise ValueError("comparison failed")
+
+    # Must return an error string, not raise.
+    assert AIConfig(enabled=True, model="m", max_chars=BadInt(1)).validate()
 
 
 def test_config_validate_handles_non_numeric_without_raising():

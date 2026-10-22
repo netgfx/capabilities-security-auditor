@@ -140,26 +140,30 @@ def strip_invisible(text: str) -> str:
     return "".join(ch for ch in text if not _is_invisible(ch))
 
 
-def clean_model_text(text: str, *, limit: int = 0) -> str:
+def clean_model_text(text: str, *, limit: int = 0, extra: tuple[str, ...] = ()) -> str:
     """Sanitise a string that came back from the (untrusted) AI model.
 
     An oversized field is replaced wholesale (never scrubbed as a prefix), which
     both bounds the work and removes any chance of leaking the exposed head of a
     credential split by a long invisible run. Otherwise invisibles are stripped
     FIRST so a secret split by zero-width characters (``ghp_<ZWSP>AAAA...``) is
-    reassembled and caught by the secret scrubber instead of slipping through as
-    an intact token. Whitespace is collapsed and the result truncated AFTER
-    scrubbing, so truncation can never re-expose a token prefix at a field
-    boundary.
+    reassembled; then any ``extra`` literal secrets (e.g. the operator's own
+    configured API key, which pattern matching can't recognise) are removed;
+    then credential shapes are scrubbed. Whitespace is collapsed and the result
+    truncated AFTER scrubbing, so truncation can never re-expose a token prefix
+    at a field boundary.
     """
     if not text:
         return ""
     if len(text) > _MODEL_INPUT_CAP:              # abnormal field -> drop entirely
         return _OVERSIZED[:limit] if limit else _OVERSIZED
     t = strip_invisible(text)                     # 1. remove invisibles first
-    t = scrub_secrets(t)                          # 2. then redact credential shapes
-    t = re.sub(r"\s+", " ", t).strip()            # 3. normalise whitespace
-    return t[:limit] if limit else t              # 4. truncate last
+    for secret in extra:                          # 2. remove known literal secrets
+        if secret and len(secret) >= 4:
+            t = t.replace(secret, REDACTED)
+    t = scrub_secrets(t)                          # 3. then redact credential shapes
+    t = re.sub(r"\s+", " ", t).strip()            # 4. normalise whitespace
+    return t[:limit] if limit else t              # 5. truncate last
 
 
 def strip_url(url: str) -> str:

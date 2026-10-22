@@ -26,6 +26,30 @@ DEFAULT_BASE_URL = "http://localhost:11434/v1"
 API_KEY_ENV = "SKILLGUARD_AI_API_KEY"
 
 
+def _is_pos_int(v) -> bool:
+    """True iff v is EXACTLY an int (not bool, not a subclass) that is >= 1.
+
+    Exact-type so a pathological int subclass with a raising __ge__ can't throw
+    out of validation.
+    """
+    if type(v) is not int:
+        return False
+    try:
+        return v >= 1
+    except Exception:  # noqa: BLE001 - a hostile __ge__ -> treat as invalid
+        return False
+
+
+def _is_pos_finite(v) -> bool:
+    """True iff v is EXACTLY an int or float (not bool/subclass), finite and > 0."""
+    if type(v) is not int and type(v) is not float:
+        return False
+    try:
+        return math.isfinite(v) and v > 0
+    except (OverflowError, TypeError, ValueError):
+        return False
+
+
 @dataclass(frozen=True)
 class AIConfig:
     """Resolved settings for one AI-enabled run."""
@@ -44,30 +68,23 @@ class AIConfig:
         if not self.enabled:
             return None
         if self.provider not in PROVIDERS:
-            return f"unknown --ai-provider {self.provider!r} (choose {PROVIDERS})"
+            # Do not echo the raw provider value — it is caller-controlled and
+            # could carry credential/invisible material into a diagnostic string.
+            return f"unknown --ai-provider (choose one of {PROVIDERS})"
         if not self.model:
             return ("--ai requires --ai-model (BYOK has no default model); "
                     "e.g. --ai-model llama3.1 for a local Ollama model")
         if not self.base_url:
             return "--ai requires a non-empty --ai-base-url"
-        # Guard every numeric check: a non-numeric value (e.g. None) passed via
-        # the library API must return an error string, never raise out of
-        # validate() — a raise here would escape review_asset and drop the
-        # asset's deterministic report.
-        try:
-            if int(self.max_chars) < 1:
-                return "--ai-max-chars must be >= 1 (0 would silently review nothing)"
-        except (TypeError, ValueError):
+        # validate() must NEVER raise, whatever junk a caller put in the config
+        # via the library API (None, a string, inf, a huge int): a raise here
+        # would escape review_asset and drop the asset's deterministic report.
+        # So check types first, then values, and treat any error as "invalid".
+        if not _is_pos_int(self.max_chars):
             return "--ai-max-chars must be an integer >= 1"
-        try:
-            if not math.isfinite(float(self.timeout_s)) or float(self.timeout_s) <= 0:
-                return "--ai-timeout must be a finite number > 0"
-        except (TypeError, ValueError):
+        if not _is_pos_finite(self.timeout_s):
             return "--ai-timeout must be a finite number > 0"
-        try:
-            if int(self.max_findings) < 1:
-                return "max_findings must be >= 1"
-        except (TypeError, ValueError):
+        if not _is_pos_int(self.max_findings):
             return "max_findings must be an integer >= 1"
         return None
 

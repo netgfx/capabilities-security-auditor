@@ -43,6 +43,10 @@ _MAX_RESPONSE_CHARS = 200_000
 # and is far beyond anything a real review of one asset produces).
 _MAX_FINDINGS_HARD = 500
 
+# The only fields a finding item may carry; anything else fails the response.
+_FINDING_FIELDS = frozenset({"category", "severity", "confidence", "title",
+                             "detail", "quote"})
+
 # Categories the model is allowed to use (its own value strings).
 _CATEGORY_BY_VALUE = {c.value: c for c in Category}
 # Severities the model may assert, after clamping.
@@ -143,7 +147,7 @@ def _no_duplicate_keys(pairs: list[tuple[str, object]]) -> dict:
     seen: set[str] = set()
     for k, _ in pairs:
         if k in seen:
-            raise AIResponseError(f"duplicate JSON key {k!r}")
+            raise AIResponseError("duplicate JSON key in response")
         seen.add(k)
     return dict(pairs)
 
@@ -197,13 +201,13 @@ def _parse_severity(value: object) -> Severity:
     """Resolve a model severity, rejecting unknown values (fail-closed)."""
     sev = _SEVERITY_BY_VALUE.get(str(value).lower().strip())
     if sev is None:
-        raise AIResponseError(f"unknown severity {value!r}")
+        raise AIResponseError("unknown severity value")
     # AI may not assert CRITICAL — that tier is for structural certainty only.
     return Severity.HIGH if sev is Severity.CRITICAL else sev
 
 
-def parse_findings(raw: str, *, asset_name: str, path: str,
-                   max_findings: int) -> tuple[list[Finding], str]:
+def parse_findings(raw: str, *, asset_name: str, path: str, max_findings: int,
+                   redact_values: tuple[str, ...] = ()) -> tuple[list[Finding], str]:
     """Parse + validate + clamp + scrub a model response into Findings.
 
     Strict and fail-closed: unparseable output, a non-list ``findings``, a
@@ -212,8 +216,17 @@ def parse_findings(raw: str, *, asset_name: str, path: str,
     accepting a "clean" result it can't trust. Every surviving string is cleaned
     (invisibles stripped first, then secrets scrubbed) because the model output
     is untrusted and may echo an attacker's secret or invisible payload.
+    ``redact_values`` are literal secrets (e.g. the configured API key) removed
+    from every emitted string.
     """
     obj = _extract_json(raw)
+    # Reject any unexpected top-level field. A model that signals failure out of
+    # band — {"findings": [], "error": "context exceeded"} or
+    # {"findings": [], "complete": false} — must NOT be read as a clean,
+    # complete review; only the exact schema is accepted.
+    extra = set(obj) - {"findings", "summary"}
+    if extra:
+        raise AIResponseError("unexpected top-level field(s) in response")
     raw_findings = obj.get("findings")
     if not isinstance(raw_findings, list):
         raise AIResponseError("'findings' is not a list")
@@ -222,7 +235,7 @@ def parse_findings(raw: str, *, asset_name: str, path: str,
     # one). 1e9999 parses to a float, so this also rejects non-finite numbers.
     if "summary" in obj and not isinstance(obj["summary"], str):
         raise AIResponseError("summary is not a string")
-    summary = clean_model_text(obj.get("summary", ""), limit=300)
+    summary = clean_model_text(obj.get("summary", ""), limit=300, extra=redact_values)
     if len(raw_findings) > _MAX_FINDINGS_HARD:
         raise AIResponseError("absurd number of findings in response")
 
@@ -234,6 +247,11 @@ def parse_findings(raw: str, *, asset_name: str, path: str,
     for item in raw_findings:
         if not isinstance(item, dict):
             raise AIResponseError("a finding item is not an object")
+        # Reject unexpected finding-item fields too: a per-item out-of-band
+        # failure marker ({"...": ..., "error": "...", "complete": false}) must
+        # fail the response, not be silently ignored.
+        if set(item) - _FINDING_FIELDS:
+            raise AIResponseError("unexpected field in finding item")
         for field in ("category", "severity", "confidence", "title", "detail"):
             if not isinstance(item.get(field), str):
                 raise AIResponseError(f"finding field {field!r} missing or not a string")
@@ -241,17 +259,18 @@ def parse_findings(raw: str, *, asset_name: str, path: str,
             raise AIResponseError("finding field 'quote' is not a string")
         cat = _CATEGORY_BY_VALUE.get(item["category"].lower().strip())
         if cat is None:
-            raise AIResponseError(f"unknown category {item['category']!r}")
+            raise AIResponseError("unknown finding category")
         severity = _parse_severity(item["severity"])
         conf = item["confidence"].lower().strip()
         if conf not in _VERDICT_BY_CONFIDENCE:
-            raise AIResponseError(f"unknown confidence {item['confidence']!r}")
+            raise AIResponseError("unknown confidence value")
         verdict = _VERDICT_BY_CONFIDENCE[conf]
         if len(out) >= max_findings:
             continue                       # validated, but past the advisory cap
-        title = clean_model_text(item["title"], limit=140) or "AI-flagged concern"
-        detail = clean_model_text(item["detail"], limit=400)
-        quote = clean_model_text(item.get("quote", ""), limit=200)
+        title = clean_model_text(item["title"], limit=140, extra=redact_values) \
+            or "AI-flagged concern"
+        detail = clean_model_text(item["detail"], limit=400, extra=redact_values)
+        quote = clean_model_text(item.get("quote", ""), limit=200, extra=redact_values)
         out.append(Finding(
             rule_id="ai.review",
             category=cat,

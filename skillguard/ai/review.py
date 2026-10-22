@@ -112,9 +112,13 @@ def review_asset(asset: Asset, cfg: AIConfig, *,
     # Validate at the library boundary too, not just the CLI: a bad config
     # reaching scan_asset/review_asset directly must fail closed, never silently
     # disable a safeguard (e.g. max_findings=0).
-    cfg_err = cfg.validate()
+    try:
+        cfg_err = cfg.validate()
+    except Exception as exc:               # noqa: BLE001 - validate must not escape
+        return [], f"AI pass misconfigured ({type(exc).__name__})"
     if cfg_err:
-        return [], f"AI pass misconfigured: {cfg_err}"
+        # Sanitise: a validation message could echo a caller-supplied value.
+        return [], f"AI pass misconfigured: {clean_model_text(cfg_err, limit=200)}"
     # Gathering/normalising the content runs inside the guard too: a failure here
     # must become a coverage note, never an exception that escapes review_asset
     # and makes the engine drop the asset's (already-computed) deterministic
@@ -131,23 +135,27 @@ def review_asset(asset: Asset, cfg: AIConfig, *,
             return [], "AI pass could not read this asset's files (coverage gap)"
         return [], None
 
+    # Literal secrets to strip from any model/error string: the operator's own
+    # configured API key can't be recognised by pattern scrubbing, so remove it
+    # explicitly wherever it might be echoed back.
+    secret_literals = tuple(s for s in (cfg.api_key,) if isinstance(s, str) and s)
     call = completion or client.complete
     try:
         _nonce, user = build_payload(content, obf_notes)
         raw = call(SYSTEM_PROMPT, user, cfg)
     except client.AIUnavailable as exc:
-        return [], f"AI pass unavailable: {clean_model_text(str(exc), limit=200)}"
+        return [], f"AI pass unavailable: {clean_model_text(str(exc), limit=200, extra=secret_literals)}"
     except client.AIError as exc:
-        return [], f"AI pass failed: {clean_model_text(str(exc), limit=200)}"
+        return [], f"AI pass failed: {clean_model_text(str(exc), limit=200, extra=secret_literals)}"
     except Exception as exc:               # noqa: BLE001 - never fail open
         return [], f"AI pass error ({type(exc).__name__})"
 
     try:
         findings, _summary = parse_findings(
-            raw, asset_name=asset.name,
-            path=asset.rel_root, max_findings=cfg.max_findings)
+            raw, asset_name=asset.name, path=asset.rel_root,
+            max_findings=cfg.max_findings, redact_values=secret_literals)
     except AIResponseError as exc:
-        return [], f"AI pass returned unusable output: {clean_model_text(str(exc), limit=200)}"
+        return [], f"AI pass returned unusable output: {clean_model_text(str(exc), limit=200, extra=secret_literals)}"
     except Exception as exc:               # noqa: BLE001 - never fail open
         return [], f"AI pass error parsing output ({type(exc).__name__})"
 
